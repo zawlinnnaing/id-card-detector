@@ -1,36 +1,69 @@
 
 # Import packages
+from utils import visualization_utils as vis_util
+from utils import label_map_util
+import argparse
 import os
 import cv2
+import shutil
 import numpy as np
 import tensorflow as tf
 import sys
 
 from PIL import Image
 
-# This is needed since the notebook is stored in the object_detection folder.
+
+def get_images(img_path):
+    files = []
+    exts = ['jpg', 'png', 'jpeg', 'JPG']
+    for parent, _, filenames in os.walk(img_path):
+        for filename in filenames:
+            for ext in exts:
+                if filename.endswith(ext):
+                    files.append(os.path.join(parent, filename))
+                    break
+    print('Found {} images'.format(len(files)))
+    return files
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Detecting and cropping ID card from image")
+    parser.add_argument(
+        '--img', help="Image file or directory to be processed", action="store", default="test_images")
+
+    parser.add_argument(
+        "--output_dir", help="Output directory for cropped image", action="store", default="output")
+
+    return parser.parse_args()
+    # This is needed since the notebook is stored in the object_detection folder.
+
+
 sys.path.append("..")
 
+args = argument_parser()
+
 # Import utilites
-from utils import label_map_util
-from utils import visualization_utils as vis_util
 
 # Name of the directory containing the object detection module we're using
+CWD_PATH = os.getcwd()
+
 MODEL_NAME = 'model'
-IMAGE_NAME = 'test_images/image1.png'
+IMAGE_NAME = args.img
+IMAGE_EXTS = ['gif', 'jpg', 'png', 'jpeg', 'tiff']
+OUTPUT_DIR = os.path.join(CWD_PATH, args.output_dir)
 
 # Grab path to current working directory
-CWD_PATH = os.getcwd()
 
 # Path to frozen detection graph .pb file, which contains the model that is used
 # for object detection.
-PATH_TO_CKPT = os.path.join(CWD_PATH,MODEL_NAME,'frozen_inference_graph.pb')
+PATH_TO_CKPT = os.path.join(CWD_PATH, MODEL_NAME, 'frozen_inference_graph.pb')
 
 # Path to label map file
-PATH_TO_LABELS = os.path.join(CWD_PATH,'data','labelmap.pbtxt')
+PATH_TO_LABELS = os.path.join(CWD_PATH, 'data', 'labelmap.pbtxt')
 
 # Path to image
-PATH_TO_IMAGE = os.path.join(CWD_PATH,IMAGE_NAME)
+PATH_TO_IMAGE = os.path.join(CWD_PATH, IMAGE_NAME)
 
 # Number of classes the object detector can identify
 NUM_CLASSES = 1
@@ -41,7 +74,8 @@ NUM_CLASSES = 1
 # Here we use internal utility functions, but anything that returns a
 # dictionary mapping integers to appropriate string labels would be fine
 label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
-categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
+categories = label_map_util.convert_label_map_to_categories(
+    label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
 category_index = label_map_util.create_category_index(categories)
 
 # Load the Tensorflow model into memory.
@@ -72,48 +106,48 @@ detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
 # Number of objects detected
 num_detections = detection_graph.get_tensor_by_name('num_detections:0')
 
-# Load image using OpenCV and
-# expand image dimensions to have shape: [1, None, None, 3]
-# i.e. a single-column array, where each item in the column has the pixel RGB value
-image = cv2.imread(PATH_TO_IMAGE)
-image_expanded = np.expand_dims(image, axis=0)
+# Remove output dir
+if os.path.isdir(OUTPUT_DIR):
+    shutil.rmtree(OUTPUT_DIR)
+os.makedirs(OUTPUT_DIR)
 
-# Perform the actual detection by running the model with the image as input
-(boxes, scores, classes, num) = sess.run(
-    [detection_boxes, detection_scores, detection_classes, num_detections],
-    feed_dict={image_tensor: image_expanded})
+images = get_images(PATH_TO_IMAGE)
 
-# Draw the results of the detection (aka 'visulaize the results')
-image, array_coord = vis_util.visualize_boxes_and_labels_on_image_array(
-    image,
-    np.squeeze(boxes),
-    np.squeeze(classes).astype(np.int32),
-    np.squeeze(scores),
-    category_index,
-    use_normalized_coordinates=True,
-    line_thickness=3,
-    min_score_thresh=0.60)
 
-ymin, xmin, ymax, xmax = array_coord
+for image_fn in images:
+    print(f"running images {image_fn}")
+    # Load image using OpenCV and
+    # expand image dimensions to have shape: [1, None, None, 3]
+    # i.e. a single-column array, where each item in the column has the pixel RGB value
+    image = cv2.imread(image_fn)
+    
+    image_expanded = np.expand_dims(image, axis=0)
 
-shape = np.shape(image)
-im_width, im_height = shape[1], shape[0]
-(left, right, top, bottom) = (xmin * im_width, xmax * im_width, ymin * im_height, ymax * im_height)
+    # Perform the actual detection by running the model with the image as input
+    (boxes, scores, classes, num) = sess.run(
+        [detection_boxes, detection_scores, detection_classes, num_detections],
+        feed_dict={image_tensor: image_expanded})
 
-# Using Image to crop and save the extracted copied image
-im = Image.open(image_path)
-im.crop((left, top, right, bottom)).save(output_path, quality=95)
+    # Draw the results of the detection (aka 'visulaize the results')
+    image, array_coord = vis_util.visualize_boxes_and_labels_on_image_array(
+        image,
+        np.squeeze(boxes),
+        np.squeeze(classes).astype(np.int32),
+        np.squeeze(scores),
+        category_index,
+        use_normalized_coordinates=True,
+        line_thickness=3,
+        min_score_thresh=0.60)
 
-cv2.imshow('ID-CARD-DETECTOR : ', image)
+    ymin, xmin, ymax, xmax = array_coord
 
-image_cropped = cv2.imread(output_path)
-cv2.imshow("ID-CARD-CROPPED : ", image_cropped)
+    shape = np.shape(image)
+    im_width, im_height = shape[1], shape[0]
+    (left, right, top, bottom) = (xmin * im_width,
+                                  xmax * im_width, ymin * im_height, ymax * im_height)
 
-# All the results have been drawn on image. Now display the image.
-cv2.imshow('ID CARD DETECTOR', image)
-
-# Press any key to close the image
-cv2.waitKey(0)
-
-# Clean up
-cv2.destroyAllWindows()
+    # Using Image to crop and save the extracted copied image
+    output_path = os.path.join(OUTPUT_DIR, os.path.basename(image_fn))
+    print(f"output dir {output_path}")
+    im = Image.open(image_fn)
+    im.crop((left, top, right, bottom)).save(output_path, quality=95)
