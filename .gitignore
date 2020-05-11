@@ -106,3 +106,10 @@ venv.bak/
 #Images
 test_images/*
 output_images/*
+
+
+*images*/
+
+output_yangon*/
+
+*labels/

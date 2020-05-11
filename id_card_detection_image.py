@@ -2,6 +2,7 @@
 # Import packages
 from utils import visualization_utils as vis_util
 from utils import label_map_util
+import traceback
 import argparse
 import os
 import cv2
@@ -16,12 +17,17 @@ from PIL import Image
 def get_images(img_path):
     files = []
     exts = ['jpg', 'png', 'jpeg', 'JPG']
-    for parent, _, filenames in os.walk(img_path):
-        for filename in filenames:
-            for ext in exts:
-                if filename.endswith(ext):
-                    files.append(os.path.join(parent, filename))
-                    break
+    if os.path.isfile(img_path):
+        for ext in exts:
+            if img_path.endswith(ext):
+                files.append(img_path)
+    else:
+        for parent, _, filenames in os.walk(img_path):
+            for filename in filenames:
+                for ext in exts:
+                    if filename.endswith(ext):
+                        files.append(os.path.join(parent, filename))
+                        break
     print('Found {} images'.format(len(files)))
     return files
 
@@ -115,39 +121,47 @@ images = get_images(PATH_TO_IMAGE)
 
 
 for image_fn in images:
-    print(f"running images {image_fn}")
-    # Load image using OpenCV and
-    # expand image dimensions to have shape: [1, None, None, 3]
-    # i.e. a single-column array, where each item in the column has the pixel RGB value
-    image = cv2.imread(image_fn)
-    
-    image_expanded = np.expand_dims(image, axis=0)
+    try:
+        print(f"running images {image_fn}")
+        # Load image using OpenCV and
+        # expand image dimensions to have shape: [1, None, None, 3]
+        # i.e. a single-column array, where each item in the column has the pixel RGB value
+        image = cv2.imread(image_fn)
 
-    # Perform the actual detection by running the model with the image as input
-    (boxes, scores, classes, num) = sess.run(
-        [detection_boxes, detection_scores, detection_classes, num_detections],
-        feed_dict={image_tensor: image_expanded})
+        image_expanded = np.expand_dims(image, axis=0)
 
-    # Draw the results of the detection (aka 'visulaize the results')
-    image, array_coord = vis_util.visualize_boxes_and_labels_on_image_array(
-        image,
-        np.squeeze(boxes),
-        np.squeeze(classes).astype(np.int32),
-        np.squeeze(scores),
-        category_index,
-        use_normalized_coordinates=True,
-        line_thickness=3,
-        min_score_thresh=0.60)
+        # Perform the actual detection by running the model with the image as input
+        (boxes, scores, classes, num) = sess.run(
+            [detection_boxes, detection_scores, detection_classes, num_detections],
+            feed_dict={image_tensor: image_expanded})
 
-    ymin, xmin, ymax, xmax = array_coord
+        # print("confidence scores", scores.shape, boxes.shape, classes.shape)
+        # Draw the results of the detection (aka 'visulaize the results')
+        image, array_coord, box_to_display_str_map = vis_util.visualize_boxes_and_labels_on_image_array(
+            image,
+            np.squeeze(boxes),
+            np.squeeze(classes).astype(np.int32),
+            np.squeeze(scores),
+            category_index,
+            use_normalized_coordinates=True,
+            line_thickness=3,
+            min_score_thresh=0.60)
 
-    shape = np.shape(image)
-    im_width, im_height = shape[1], shape[0]
-    (left, right, top, bottom) = (xmin * im_width,
-                                  xmax * im_width, ymin * im_height, ymax * im_height)
+        ymin, xmin, ymax, xmax = array_coord
 
-    # Using Image to crop and save the extracted copied image
-    output_path = os.path.join(OUTPUT_DIR, os.path.basename(image_fn))
-    print(f"output dir {output_path}")
-    im = Image.open(image_fn)
-    im.crop((left, top, right, bottom)).save(output_path, quality=95)
+        for key, value in box_to_display_str_map.items():
+            print("box to display str map", key, value)
+        shape = np.shape(image)
+        im_width, im_height = shape[1], shape[0]
+        (left, right, top, bottom) = (xmin * im_width,
+                                      xmax * im_width, ymin * im_height, ymax * im_height)
+
+        # Using Image to crop and save the extracted copied image
+        output_path = os.path.join(OUTPUT_DIR, os.path.basename(image_fn))
+        print(f"output dir {output_path}")
+        im = Image.open(image_fn)
+        im.crop((left, top, right, bottom)).save(output_path, quality=95)
+    except Exception as e:
+        traceback.print_exc()
+        print("exception found for image", image_fn)
+        continue
